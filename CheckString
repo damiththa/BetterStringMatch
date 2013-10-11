@@ -1,0 +1,73 @@
+<!---Default value for Select Agent trigger email--->
+<cfset SelectAgentMatch = 'NotFound'>
+
+<!---Word-to-word--->
+<cfset wTw_arr = ArrayNew(2)>
+
+<cfset cnt = 1>
+
+<!---List of Common words (i.e. these words will be avoided in 'wordIs' search)--->
+<cfset wordsToAvoid = "a,all,am,an,and,any,are,as,at,be,but,can,did,do,does,for,from,had,has,have,here,how,i,if,in,is,it,no,not,of,on,or,so,that,the,then,there,this,to,too,up,use,what,when,where,who,why,you">
+
+<cfoutput>
+  <!---Passed String--->
+  <cfset stringIsNow = #Trim(YourString)#>
+  
+  <!---Breaking Description String into words--->
+  <cfset wordArr = reMatch(' ',stringIsNow)>
+  <cfset wordCount = ArrayLen(wordArr) + 1> <!-- +1 is to count the last word-->
+  
+  <!---looping thru word-by-word and checking againts select agents list--->
+  <cfloop from="1" to="#wordCount#" index="r">
+    <cfset wordIs = #ListGetAt(stringIsNow,r," ")#>
+    
+	<!---Checking in Table for matches i.e. these are the predefined trigger words--->
+    <cfquery name="CheckWord" datasource="myDataSourse">
+      SELECT UPPER(Key_Word) AS kWord
+      FROM myTriggerWordsTable
+      WHERE SOUNDEX(UPPER(Key_Word)) = SOUNDEX(UPPER('#wordIs#'))
+    </cfquery>
+    
+    <cfif #CheckWord.RecordCount# NEQ 0>
+	  <!---ReCheck in wordsToAvoid--->
+      <CFIF #ListFindNoCase(wordsToAvoid,wordIs,",")# IS 0><!---Match Found--->            
+		<!---Into word-to-word array--->
+        <cfset wTw_arr[#cnt#][1] = #UCASE(wordIs)#><!---Trigger Word Into Array--->
+        <cfset wTw_arr[#cnt#][2] = #trim(CheckWord.kWord)#>
+        <!---Default Match Word trigger set to 'NO'--->
+        <cfset wTw_arr[#cnt#][3] = 'No'>
+        
+        <!---Increment--->
+        <cfset #cnt# = #cnt# + 1>
+      </CFIF>
+    </cfif>
+  </cfloop>
+</cfoutput>
+
+<!---Going Thru Trigger Words and further check for Legit matches--->
+<cfloop from="1" to="#ArrayLen(wTw_arr)#" index="wTw">
+
+  <!---Check in Levenshtein Distance Algorithm---> 
+  <cfquery name="Match" datasource="WebDB">
+      SELECT dbo.edit_distance('#wTw_arr[wTw][1]#','#wTw_arr[wTw][2]#') AS Word
+  </cfquery>
+  
+  <!---Getting a Distance of LTE 2--->
+  <!---NOTE: Distance = 0 is a pefect match--->
+  <cfif #Match.Word# LTE 2>
+  	<!---Trigger Email alert--->
+	<cfset SelectAgentMatch = 'Found'>
+    <!---Match Word trigger set to 'YES'--->
+	<cfset wTw_arr[#wTw#][3] = 'Yes'>
+  </cfif>
+</cfloop>
+
+<!----Actions according to results---->
+<cfswitch expression="#SelectAgentMatch#">
+  <cfcase value="NotFound">
+    <!---Do Nothing--->
+  </cfcase>
+  <cfcase value="Found">
+    <cfdump var = "#wTw_arr#">
+  </cfcase>
+</cfswitch>  
